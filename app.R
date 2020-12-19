@@ -59,15 +59,6 @@ ui <- fluidPage(theme = shinytheme('yeti'),
                            ),
                  mainPanel(strong('This can be explored in greater depth on the "State Level" tab above, where a user can filter by selectivity, control, and level and examine state-level breakdowns of enrollment.'),
                            br(), br()),
-                 #mainPanel("Similarily, we can allow the effects to vary by state. Click on any state to begin.",
-                #           br(), br()),
-                 #mainPanel(plotlyOutput("slider_map2", height = 800, width = 1000), 
-                 #          sliderTextInput("selectivity_slider2","Selectivity" , 
-                 #              choices = c("Not Ranked", "Noncompetitive", "Less Competitive", "Competitive", "Very Competitive",
-                 #                          "Highly Competitive", "Most Competitive/Special Focus"), 
-                 #              selected = c("Not Ranked","Most Competitive/Special Focus"),
-                 #              dragRange = TRUE,
-                 #              to_fixed = TRUE)),
                  mainPanel(h2("Geographic Breakdown by Sector")),
                  mainPanel("Since we determined a strong correlation between geographic diversity and institutional selectivity, it shouldn't be a surprise there is a big difference in the geographic makeups of two-year institutions and four-year institutions. Despite greater geographic commitment, 4-year institutions see a greater proportion of students who attend from out-of-state than 2-year institutions. More students attend institutions from out-of-state to obtain a 4-year degree as opposed to a 2-year degree.",
                            br(), br()),
@@ -210,8 +201,8 @@ ui <- fluidPage(theme = shinytheme('yeti'),
 
 server <- function(input, output, session, clHist) {
     
-    #add reactive data information. Dataset = built in diamonds data
-   print('M')
+    #adding data and cleaning up messiness
+    
     M <- read_csv("Mapping.csv")
     I <- read_csv("click_state_gb_2.csv")
     
@@ -220,7 +211,6 @@ server <- function(input, output, session, clHist) {
     n <- length(L[[1]])
     S <- structure(L, row.names = c(NA, -n), class = "data.frame")
     
-    print('D')
     D <- read_csv("institutions.csv")
     L <- lapply(D, iconv, to = "UTF-8")
     n <- length(L[[1]])
@@ -305,6 +295,7 @@ server <- function(input, output, session, clHist) {
               sep = "",
               collapse = " ")
     }
+    
     I <- I %>% mutate(state_pct = round(state_pct, 4)) %>% 
                mutate(region = str_to_lower(region)) %>% 
                filter(region != "district of columbia")
@@ -315,112 +306,13 @@ server <- function(input, output, session, clHist) {
     I$code <- state.abb[match(I$state, state.name)]
     D$code <- state.abb[match(D$long_state_res, state.name)]
     
-    #making temp sets that fit for interactive maps
-
-    #making quartiles for plotting size
-    
-    CT <- function(r,data,pop){
-        
-        cali <- map_data("county") %>%
-            filter(region == r)
-        
-        cali_pop <- left_join(cali, pop, by = c("subregion","region"))
-        
-        cali_pop$pop_cat <- with(cali_pop,
-                                 (paste0(cali_pop$subregion, "<br />",
-                                         round(cali_pop$MedianBackers), "Median Backers ||",round(cali_pop$MedianUSD),"MedianUSD","<br />",
-                                         round(cali_pop$MeanBackers), "Mean Backers ||",round(cali_pop$MeanUSD),"MeanUSD","<br />",
-                                         (cali_pop$TotalBackers), "Total Backers ||",(cali_pop$TotalUSD), "TotalUSD")))
-        cali_pop[is.na(cali_pop)] <- 0
-        cali_pop$pop_cat <- as.factor(cali_pop$pop_cat)
-        
-        p <- cali_pop %>%
-            group_by(group) %>%
-            plot_ly(x = ~long, y = ~lat, color = ~as.factor(TotalUSD), colors = c('#ffeda0','#f03b20'), text = ~pop_cat) %>%
-            add_polygons(line = list(width = 0.4),showlegend = FALSE) %>%
-            add_polygons(
-                fillcolor = 'transparent',
-                line = list(color = 'black', width = 0.5),
-                showlegend = FALSE
-            ) %>%
-            layout(
-                title = "Backers by County",
-                titlefont = list(size = 10),
-                xaxis = list(title = "", showgrid = FALSE,
-                             zeroline = FALSE, showticklabels = FALSE),
-                yaxis = list(title = "", showgrid = FALSE,
-                             zeroline = FALSE, showticklabels = FALSE)
-            )
-        p
-        
-    }
-    
-    Inst <- function(index, curve, data1, data2) {
-        inst <- data1 %>% 
-                mutate(X1 = row_number()) %>% filter(X1 == index)
-        inst <- inst %>% 
-            merge(data2, by = c('instnm', 'barrons14', 'sector', 'tot_enr')) %>% 
-            select(instnm, long_state_res, state_enr, tot_enr, sector, barrons14, code)
-        name = inst$instnm[1]
-        
-        
-        print(name)
-        g <- list(
-            scope = 'usa',
-            showland = TRUE,
-            landcolor = toRGB("grey83"),
-            subunitcolor = toRGB("white"),
-            countrycolor = toRGB("white"),
-            showlakes = TRUE,
-            lakecolor = toRGB("white"),
-            showsubunits = TRUE,
-            showcountries = TRUE,
-            resolution = 50,
-            projection = list(type = 'albers usa',
-                              rotation = list(lon = -100)),
-            lonaxis = list(
-                showgrid = TRUE,
-                gridwidth = 0.5,
-                range = c(-140,-55),
-                dtick = 5
-            ),
-            lataxis = list(
-                showgrid = TRUE,
-                gridwidth = 0.5,
-                range = c(15, 70),
-                dtick = 5
-            )
-        )
-        inst <- inst %>% filter(!is.na(code))
-        
-        z <- inst$state_enr
-        
-        p <- plot_ly(inst,
-                     z = z,
-                     zmin = 0,
-                     zmax = as.numeric(max(inst$tot_enr)),
-                     #text = ~ M$hover,
-                     type = 'choropleth',
-                     locations = ~ inst$code,
-                     locationmode = "USA-states",
-                     colorscale = 'Reds',
-                     showscale = F,
-                     reversescale = F
-        ) %>% 
-            colorbar(title = "Num students") %>%
-            layout(
-                title = paste0('Where do students who attend ', name, ' come from?'),
-                geo = g
-            ) 
-        p
-        
-    }
-    
-    In <- function(r,pop){
+    #when you click on a state
+    St <- function(r, dat){
         selected = (simpleCap(r))
-        s <- pop %>%
+        s <- dat %>%
             filter(region == r)
-
+        
+        #getting geom
         g <- list(
             scope = 'usa',
             showland = TRUE,
@@ -448,7 +340,6 @@ server <- function(input, output, session, clHist) {
             )
         )
         
-        #s$code <- state.abb[match(s$state, state.name)]
         s <- s %>% filter(!is.na(code)) %>% 
             mutate(region = str_to_title(region))
         
@@ -494,7 +385,7 @@ server <- function(input, output, session, clHist) {
     
 
     
-    
+    # state-level map
     output$Smap <- renderPlotly({
         M$hover <- with(M, paste("State:",State))
         # give state boundaries a white border
@@ -709,7 +600,7 @@ server <- function(input, output, session, clHist) {
         }
             isFlag = FALSE
             I2 = filter1()
-            In(d,I2)
+            St(d,I2) # getting state data
     }
     )
 
@@ -773,73 +664,6 @@ server <- function(input, output, session, clHist) {
     )
 
     
-    output$Imap <- 
-        renderPlotly({
-        S1 = as_tibble(filter_s())
-        # give state boundaries a white border
-        l <- list(color = toRGB("black"), width = 2)
-        S1$hover = with(S1, paste(instnm))
-        # specify some map projection/options
-        g <- list(
-            scope = 'usa',
-            showland = TRUE,
-            landcolor = toRGB("grey85"),
-            subunitcolor = toRGB("white"),
-            countrycolor = toRGB("white"),
-            showlakes = TRUE,
-            lakecolor = toRGB("white"),
-            showsubunits = TRUE,
-            showcountries = TRUE,
-            resolution = 100,
-            projection = list(type = 'usa',
-                              rotation = list(lon = -100)),
-            lonaxis = list(
-                showgrid = TRUE,
-                gridwidth = 0.5,
-                range = c(-140,-55),
-                dtick = 5
-            ),
-            lataxis = list(
-                showgrid = TRUE,
-                gridwidth = 0.5,
-                range = c(15, 70),
-                dtick = 5
-            )
-        )
-        # Plotting a US interactive map
-        p <- plot_geo(S1, source = "InstLev") %>%
-            add_markers(
-                x = ~ S1$longi,
-                y = ~ S1$lati,
-                text = ~ S1$hover,
-                size = ~ as.integer(S1$tot_enr),
-                color = as.factor(S1$sector),
-                showlegend = TRUE
-            ) %>%
-            layout(title = 'Click on institution to begin:', geo = g)
-        p
-        }
-        )
-    
-    output$Imap2 <- renderPlotly({
-            s <- event_data("plotly_click", source = 'InstLev')
-            if (is.null(s)){
-                plotly_empty()
-            }
-            
-            else
-            {
-                runjs("Shiny.setInputValue('plotly_selected-InstLev', null);")
-                clickedmap = TRUE
-                S1 = as_tibble(filter_s())
-                index = S1 %>% filter()
-                index = s$pointNumber + 1
-                curve = s$curveNumber
-                Inst(index, curve, S1, D)
-            }
-        }
-        )
-    
     output$Imap3 <- renderPlotly({
         filterState()
         imp = (input$select)
@@ -860,8 +684,7 @@ server <- function(input, output, session, clHist) {
             inst$plural = ifelse(inst$state_enr == 1, 'student', 'students')
             inst$hover <- paste0(inst$long_state_res, '<br>', inst$state_enr, " ", inst$plural, "<br>", inst$prop, "%")
         }
-        print(head(inst))
-        print(head(inst))
+
         g <- list(
             scope = 'usa',
             showland = TRUE,
@@ -891,6 +714,7 @@ server <- function(input, output, session, clHist) {
         
         print(inst$prop)
         z = inst$prop
+        #changing saale if sensitivity is set to high
         if (sens == 'High') {
             scale = z[z != max(z)]
             maxval = max(scale)*2
@@ -946,23 +770,6 @@ server <- function(input, output, session, clHist) {
         s
     })
     
-    output$plotBar1 <- renderPlotly({
-        p1 <- d_s %>% count(City, status) %>%
-            plot_ly(x = ~ City,
-                    y = ~ n,
-                    color = ~ status)
-        p1
-        
-    })
-    
-    output$plotBar2 <- renderPlotly({
-        p2 <- H %>% count(Categories, status) %>%
-            plot_ly(x = ~ Categories,
-                    y = ~ n,
-                    color = ~ status)
-        
-        p2
-    })
     
     
     output$slider_map2 <- renderPlotly({
@@ -1020,8 +827,7 @@ server <- function(input, output, session, clHist) {
         else { # user clicked
             s <- event_data("plotly_click", source = "s2")
             print(s)
-            #main map
-            ## state clicks
+            ## state clicks - no other way to do it
             {
                 if(s$pointNumber == 0) {
                     d = "alabama"
@@ -1279,7 +1085,6 @@ In2 <- function(d) {
     Y2 <- Y2 %>% filter(!is.na(code))
     z <- Y2$pct
 
-    quantiles = unique(quantile(z, seq(0,1,0.1)))
     p <- plot_ly(Y2,source = "s2",
                  z = z,
                  zmin = .01,
@@ -1312,6 +1117,7 @@ output$inst_header <-renderText({
     }
 })
 
+#filtering data depending on slider
 filter_Q <- reactive({
     range = input$selectivity_slider
     print(range[1])
@@ -1365,8 +1171,7 @@ filter_Q <- reactive({
 
 
 output$slider_map <- renderPlotly({
-    # specify some map projection/options
-    
+
     Q1 = as_tibble(filter_Q())
 
         Q2 <- Q1 %>% group_by(state) %>% summarize(x = sum(s_enr)) 
@@ -1593,7 +1398,7 @@ output$GDI <- renderPlotly({
                   (sector == 'Private for-profit, 4-year or above'))) %>% 
             filter(barrons14 !=  "Not Ranked: 2yr" ) %>%
             filter(barrons14 !=  "Not Ranked: Admin. Unit" ) %>%
-            filter(as.numeric(tot_enr) >  50) %>%
+            filter(as.numeric(tot_enr) >  50) %>% # must have more than 50 students in first-year class
             mutate(barrons14 = case_when(
                 barrons14 == 'Not Ranked' ~ "Not Ranked",
                 barrons14 == 'Noncompetitive' ~ "Less Competitive,\nNoncompetitive",
@@ -1615,7 +1420,9 @@ output$GDI <- renderPlotly({
                 'Not Ranked'))) %>% 
             mutate(index = as.numeric(sdi)) %>% 
             
+            #ggplotting
             ggplot() +
+            #jittering
             geom_quasirandom(aes(barrons14, as.numeric(index), col = Control, text = paste0(instnm, '<br>GDI: ', round(index, 3))), alpha = .5, shape = 20) + 
             xlab("Barron's Classification (2014)") +
             ylab("GDI") +
@@ -1629,6 +1436,7 @@ output$GDI <- renderPlotly({
 }
 )
 
+#duplicate of plot above for main page
 output$GDI_main <- renderPlotly({
     sdi_plot1 <- D %>% 
         filter(barrons14 !=  "Not Ranked: Sector Unkwn." ) %>%
@@ -1705,6 +1513,7 @@ output$GDI_tab <- renderDataTable({
     return(D1)
 })
 
+#columbia geographic profile
 output$columbia <- renderPlotly({
     imp = ("Columbia University in the City of New York")
     S1 = D %>% filter(instnm == imp)
@@ -1718,6 +1527,7 @@ output$columbia <- renderPlotly({
         name = 'your institution'
         hover = NA
     }
+    #hover text
     else {
         inst$plural = ifelse(inst$state_enr == 1, 'student', 'students')
         inst$hover <- paste0(inst$long_state_res, '<br>', inst$state_enr, " ", inst$plural, "<br>", inst$prop, "%")
@@ -1749,7 +1559,7 @@ output$columbia <- renderPlotly({
         )
     )
     
-    z = inst$prop
+    z = inst$prop # scale
     p <- plot_ly(inst,source = "InstLev",
                  z = z,
                  zmin = 0,
@@ -1770,13 +1580,12 @@ output$columbia <- renderPlotly({
             title = paste0('Columbia University Geographic Profile'),
             geo = g
         ) 
-    
-    #s <- event_data("plotly_click")
-    #print(s)
+
     p
 }
 )
 
+# city college geographic profile
 output$cuny <- renderPlotly({
     imp = ("CUNY City College")
     S1 = D %>% filter(instnm == imp)
@@ -1850,9 +1659,10 @@ output$cuny <- renderPlotly({
 }
 )
 
+#texas at austin geographic profile
 output$uta <- renderPlotly({
     imp = ("The University of Texas at Austin")
-    S1 = D %>% filter(instnm == imp)
+    S1 = D %>% filter(instnm == imp) #filtering data
     index = S1$X1[1]
     curve = NULL
     inst <- S1
@@ -1860,11 +1670,13 @@ output$uta <- renderPlotly({
     inst <- inst %>% filter(!is.na(code)) %>% 
         mutate(prop = round((as.numeric(state_enr)/as.numeric(tot_enr))*100,2))
     
+    #if field is empty don't render plot
     if (is.na(name)){
         name = 'your institution'
         hover = NA
     }
     else {
+        #creating hover text
         inst$plural = ifelse(inst$state_enr == 1, 'student', 'students')
         inst$hover <- paste0(inst$long_state_res, '<br>', inst$state_enr, " ", inst$plural, "<br>", inst$prop, "%")
     }
@@ -1923,6 +1735,7 @@ output$uta <- renderPlotly({
 }
 )
 
+#waffle plot; data generated from summary statistics
 output$sorted_bar <- renderPlot({
     vec = c(`Same State (78.07%)`=1765313,
             `Bordering State (8.49%)`=192063, 
@@ -1940,6 +1753,7 @@ output$sorted_bar <- renderPlot({
 output$barrons_plot <- renderPlot({
     colors = c('#999999',"#BB4430", "#EFE6DD", "#F3DFA2", "#B9CEB2", "#7EBDC2")
     
+    ##ggplotly
     p <- D %>% filter(resid_cat != 'U.S. Total') %>%
         filter(barrons14 !=  "Not Ranked: Sector Unkwn." ) %>% 
         filter(barrons14 !=  "Not Ranked: <2yr" ) %>% 
@@ -1979,7 +1793,7 @@ output$barrons_plot <- renderPlot({
     p
 })
 
-
+#same as above but by sector
 output$sector_plot <- renderPlot({
     colors = c('#999999',"#BB4430", "#EFE6DD", "#F3DFA2", "#B9CEB2", "#7EBDC2")
     
@@ -2026,6 +1840,7 @@ output$sector_plot <- renderPlot({
     p
 })
 
+#state tables
 output$state_tab <- renderDataTable({
     s = event_data("plotly_click", source = "CCM")
     print(s)
